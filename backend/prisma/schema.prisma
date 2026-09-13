@@ -1,0 +1,294 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RecordStatus {
+  ACTIVE
+  PASSIVE
+}
+
+enum DocumentStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+}
+
+enum MovementType {
+  IN
+  OUT
+  TRANSFER
+  ADJUSTMENT
+  COUNT_CORRECTION
+}
+
+enum NotificationType {
+  CRITICAL_STOCK
+  OUT_OF_STOCK
+  RECEIPT_COMPLETED
+  TRANSFER_COMPLETED
+  COUNT_DIFFERENCE
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         String   @default("WAREHOUSE_MANAGER")
+  status       RecordStatus @default(ACTIVE)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  movements    StockMovement[]
+  receipts     GoodsReceipt[]
+  dispatches   GoodsDispatch[]
+  transfers    StockTransfer[]
+  counts       StockCount[]
+  notifications Notification[]
+}
+
+model Warehouse {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  location    String
+  capacity    Int      @default(0)
+  status      RecordStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  shelves     Shelf[]
+  balances    StockBalance[]
+  sourceMoves StockMovement[] @relation("MovementSourceWarehouse")
+  targetMoves StockMovement[] @relation("MovementTargetWarehouse")
+  receipts    GoodsReceipt[]
+  dispatches  GoodsDispatch[]
+  sourceTransfers StockTransfer[] @relation("TransferSourceWarehouse")
+  targetTransfers StockTransfer[] @relation("TransferTargetWarehouse")
+  counts      StockCount[]
+}
+
+model Shelf {
+  id          String   @id @default(cuid())
+  code        String
+  zone        String
+  capacity    Int
+  status      RecordStatus @default(ACTIVE)
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  balances    StockBalance[]
+  sourceMoves StockMovement[] @relation("MovementSourceShelf")
+  targetMoves StockMovement[] @relation("MovementTargetShelf")
+  receiptItems GoodsReceiptItem[]
+  dispatchItems GoodsDispatchItem[]
+  transferSourceItems StockTransferItem[] @relation("TransferItemSourceShelf")
+  transferTargetItems StockTransferItem[] @relation("TransferItemTargetShelf")
+  countItems  StockCountItem[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([warehouseId, code])
+  @@index([warehouseId, zone])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  products  Product[]
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  sku          String   @unique
+  barcode      String?  @unique
+  unit         String
+  minimumStock Int      @default(0)
+  description  String?
+  status       RecordStatus @default(ACTIVE)
+  categoryId   String
+  category     Category @relation(fields: [categoryId], references: [id])
+  balances     StockBalance[]
+  movements    StockMovement[]
+  receiptItems GoodsReceiptItem[]
+  dispatchItems GoodsDispatchItem[]
+  transferItems StockTransferItem[]
+  countItems   StockCountItem[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([name])
+  @@index([categoryId, status])
+}
+
+model StockBalance {
+  id               String   @id @default(cuid())
+  productId        String
+  warehouseId      String
+  shelfId          String
+  quantity         Int      @default(0)
+  reservedQuantity Int      @default(0)
+  product          Product   @relation(fields: [productId], references: [id])
+  warehouse        Warehouse @relation(fields: [warehouseId], references: [id])
+  shelf            Shelf     @relation(fields: [shelfId], references: [id])
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([productId, warehouseId, shelfId])
+  @@index([warehouseId, shelfId])
+}
+
+model StockMovement {
+  id                String   @id @default(cuid())
+  type              MovementType
+  productId         String
+  sourceWarehouseId String?
+  sourceShelfId     String?
+  targetWarehouseId String?
+  targetShelfId     String?
+  quantity          Int
+  referenceType     String?
+  referenceId       String?
+  description       String?
+  userId            String
+  product           Product @relation(fields: [productId], references: [id])
+  sourceWarehouse   Warehouse? @relation("MovementSourceWarehouse", fields: [sourceWarehouseId], references: [id])
+  targetWarehouse   Warehouse? @relation("MovementTargetWarehouse", fields: [targetWarehouseId], references: [id])
+  sourceShelf       Shelf? @relation("MovementSourceShelf", fields: [sourceShelfId], references: [id])
+  targetShelf       Shelf? @relation("MovementTargetShelf", fields: [targetShelfId], references: [id])
+  user              User @relation(fields: [userId], references: [id])
+  createdAt         DateTime @default(now())
+
+  @@index([productId, createdAt])
+  @@index([type, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+model GoodsReceipt {
+  id          String   @id @default(cuid())
+  number      String   @unique
+  warehouseId String
+  status      DocumentStatus @default(DRAFT)
+  notes       String?
+  userId      String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  user        User @relation(fields: [userId], references: [id])
+  items       GoodsReceiptItem[]
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GoodsReceiptItem {
+  id        String @id @default(cuid())
+  receiptId String
+  productId String
+  shelfId   String
+  quantity  Int
+  receipt   GoodsReceipt @relation(fields: [receiptId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+  shelf     Shelf @relation(fields: [shelfId], references: [id])
+}
+
+model GoodsDispatch {
+  id          String   @id @default(cuid())
+  number      String   @unique
+  warehouseId String
+  status      DocumentStatus @default(DRAFT)
+  notes       String?
+  userId      String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  user        User @relation(fields: [userId], references: [id])
+  items       GoodsDispatchItem[]
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GoodsDispatchItem {
+  id         String @id @default(cuid())
+  dispatchId String
+  productId  String
+  shelfId    String
+  quantity   Int
+  dispatch   GoodsDispatch @relation(fields: [dispatchId], references: [id])
+  product    Product @relation(fields: [productId], references: [id])
+  shelf      Shelf @relation(fields: [shelfId], references: [id])
+}
+
+model StockTransfer {
+  id                String   @id @default(cuid())
+  number            String   @unique
+  sourceWarehouseId String
+  targetWarehouseId String
+  status            DocumentStatus @default(DRAFT)
+  notes             String?
+  userId            String
+  sourceWarehouse   Warehouse @relation("TransferSourceWarehouse", fields: [sourceWarehouseId], references: [id])
+  targetWarehouse   Warehouse @relation("TransferTargetWarehouse", fields: [targetWarehouseId], references: [id])
+  user              User @relation(fields: [userId], references: [id])
+  items             StockTransferItem[]
+  completedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model StockTransferItem {
+  id            String @id @default(cuid())
+  transferId    String
+  productId     String
+  sourceShelfId String
+  targetShelfId String
+  quantity      Int
+  transfer      StockTransfer @relation(fields: [transferId], references: [id])
+  product       Product @relation(fields: [productId], references: [id])
+  sourceShelf   Shelf @relation("TransferItemSourceShelf", fields: [sourceShelfId], references: [id])
+  targetShelf   Shelf @relation("TransferItemTargetShelf", fields: [targetShelfId], references: [id])
+}
+
+model StockCount {
+  id          String   @id @default(cuid())
+  number      String   @unique
+  warehouseId String
+  status      DocumentStatus @default(DRAFT)
+  notes       String?
+  userId      String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  user        User @relation(fields: [userId], references: [id])
+  items       StockCountItem[]
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model StockCountItem {
+  id             String @id @default(cuid())
+  countId        String
+  productId      String
+  shelfId        String
+  systemQuantity Int
+  countedQuantity Int
+  difference     Int
+  count          StockCount @relation(fields: [countId], references: [id])
+  product        Product @relation(fields: [productId], references: [id])
+  shelf          Shelf @relation(fields: [shelfId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      NotificationType
+  title     String
+  message   String
+  readAt    DateTime?
+  userId    String
+  user      User @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt, createdAt])
+}

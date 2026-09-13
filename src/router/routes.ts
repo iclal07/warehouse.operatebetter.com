@@ -1,0 +1,18 @@
+export const routes = {
+  login: "/login",
+  forgotPassword: "/forgot-password",
+  dashboard: "/",
+  products: "/products",
+  productCreate: "/products/new",
+  productDetail: (id: string) => `/products/${id}`,
+  inventory: "/stock",
+  warehouses: "/warehouses",
+  warehouseDetail: (id: string) => `/warehouses/${id}`,
+  shelves: "/shelves",
+  receipts: "/receipts",
+  dispatches: "/dispatches",
+  transfers: "/transfers",
+  stockCounts: "/stock-counts",
+  movements: "/stock-movements",
+  settings: "/settings",
+} as const;
